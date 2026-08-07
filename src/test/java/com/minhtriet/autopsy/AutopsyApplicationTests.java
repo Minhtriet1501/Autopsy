@@ -1,4 +1,4 @@
-package org.example.autopsy;
+package com.minhtriet.autopsy;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
