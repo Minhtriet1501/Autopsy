@@ -1,12 +1,9 @@
 package com.minhtriet.autopsy.agent;
 
 import com.anthropic.client.AnthropicClient;
-import com.anthropic.client.okhttp.AnthropicOkHttpClient;
 import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.*;
 import com.minhtriet.autopsy.tool.InvestigationTool;
-import com.minhtriet.autopsy.tool.TargetSystemClient;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -20,18 +17,28 @@ public class InvestigationService {
 
     private final int MAX_STEPS = 8; //cost cap no infinity loop
 
-    private final AnthropicClient client = AnthropicOkHttpClient.fromEnv();
+    private final InvestigationRepository investigationRepository;
+
+    private final AnthropicClient client;
+
     private final List<InvestigationTool> tools;
+
     private final Map<String, InvestigationTool> registry;
 
-    public InvestigationService(List<InvestigationTool> tools) {
+    public InvestigationService(List<InvestigationTool> tools, AnthropicClient client, InvestigationRepository investigationRepository) {
+        this.investigationRepository = investigationRepository;
+        this.client = client;
         this.tools = tools;
         this.registry = tools.stream().collect(Collectors.toMap(InvestigationTool::name, t -> t));
     }
 
 
 
-    public String investigate(String alert) {
+    public Investigation investigate(String alert) {
+        Investigation inv = new Investigation();
+        inv.setAlert(alert);
+        inv.setCreatedAt(java.time.Instant.now());
+
         String system = """
                 You are a system incident investigation engineer. You have a query_logs tool to read the Job Tracker's logs.
                 Your task: starting from an alert, use query_logs to gather evidence, reason about the root cause, then give a SHORT conclusion.
@@ -58,12 +65,17 @@ public class InvestigationService {
 
             messages.add(response.toParam()); //record claude's turn in the history
 
+            String reasoning = extractText(response);
+
             boolean wantsTool = response.stopReason()
                     .map(sr -> sr.equals(StopReason.TOOL_USE))
                     .orElse(false);
 
             if(!wantsTool) { //Claude has concluded (no more tool)
-                return extractText(response);
+                inv.setConclusion(reasoning);
+                inv.setStatus("CONCLUDED");
+                inv.setSteps(step);
+                return investigationRepository.save(inv);
             }
 
             List<ContentBlockParam> toolResults = new ArrayList<>();
@@ -71,10 +83,22 @@ public class InvestigationService {
                 if(block.isToolUse()) {
                     ToolUseBlock tu = block.asToolUse();
                     System.out.println("[agent] step: " + step + ": Claude called " + tu.name() + " " + tu._input());
+
+                    String result = executeTool(tu);
+
+                    EvidenceStep es = new EvidenceStep();
+                    es.setStepNo(step);
+                    es.setReasoning(reasoning);
+                    es.setToolName(tu.name());
+                    es.setToolArgs(tu._input().toString());
+                    es.setToolResult(truncate(result, 2000));
+                    es.setCreatedAt(java.time.Instant.now());
+                    inv.addStep(es);
+
                     toolResults.add(ContentBlockParam.ofToolResult(
                             ToolResultBlockParam.builder()
                                     .toolUseId(tu.id())
-                                    .content(executeTool(tu))
+                                    .content(result)
                                     .build()
                     ));
                 }
@@ -86,13 +110,12 @@ public class InvestigationService {
                     .build());
         }
 
-        return "Inconclusive: reached the " + MAX_STEPS + "-step limit without a conclusion.";
+        inv.setConclusion("INCONCLUSIVE: reach the " + MAX_STEPS + "-step limit without a conclusion.");
+        inv.setStatus("INCONCLUSIVE");
+        inv.setSteps(MAX_STEPS);
+        return investigationRepository.save(inv);
     }
 
-
-    private JsonValue strProp(String description) {
-        return JsonValue.from(Map.of("type", "string", "description", description));
-    }
 
     @SuppressWarnings("unchecked")
     private String executeTool(ToolUseBlock tu) {
@@ -113,6 +136,13 @@ public class InvestigationService {
         StringBuilder sb = new StringBuilder();
         response.content().forEach(b -> b.text().ifPresent(t -> sb.append(t.text())));
         return sb.toString();
+    }
+
+    private String truncate(String result, int max) {
+        if (result == null) return null;
+
+        return result.length() <= max ? result : result.substring(0, max) + "[truncated]";
+
     }
 
 
