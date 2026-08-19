@@ -78,7 +78,7 @@ call query_metrics." Every conclusion is traceable to the tool outputs that prod
 | n_plus_one | `N_PLUS_ONE` | ✅ | 5 | $0.063 |
 | **Total** | | **3/3 (100%)** | **avg 4.0** | **avg $0.045** |
 
-The `healthy` case matters: the agent reports *no incident* instead of inventing one — it
+The `healthy` case matters: the agent reports *no incident* instead of inventing one, it
 doesn't hallucinate a root cause when the system is fine.
 
 ## Tech stack
@@ -150,7 +150,7 @@ TARGET_BASE_URL=http://your-app:port ./mvnw spring-boot:run
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/internal/agent/investigate` | Submit an alert → returns `{jobId}` (202) |
+| `POST` | `/internal/agent/investigate` | Submit an alert -> returns `{jobId}` (202) |
 | `GET`  | `/internal/agent/jobs/{id}` | Job status (QUEUED / RUNNING / DONE / FAILED) |
 | `GET`  | `/internal/agent/investigations/{id}` | Full evidence trail |
 | `POST` | `/internal/eval/run` | Run the eval suite → accuracy / steps / cost |
