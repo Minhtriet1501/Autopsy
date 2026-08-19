@@ -78,7 +78,7 @@ call query_metrics." Every conclusion is traceable to the tool outputs that prod
 | n_plus_one | `N_PLUS_ONE` | ✅ | 5 | $0.063 |
 | **Total** | | **3/3 (100%)** | **avg 4.0** | **avg $0.045** |
 
-The `healthy` case matters: the agent reports *no incident* instead of inventing one — it
+The `healthy` case matters: the agent reports *no incident* instead of inventing one, it
 doesn't hallucinate a root cause when the system is fine.
 
 ## Tech stack
