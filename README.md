@@ -119,6 +119,33 @@ curl localhost:8081/internal/agent/investigations/<id>
 curl -X POST localhost:8081/internal/eval/run
 ```
 
+## Point it at your own system
+
+This agent is meant to run **against your own system**, not as a public service: you run it
+where you can reach your app, and it holds *your* Anthropic key. `Job Tracker` above is just a
+demo target. To investigate your own app, point `TARGET_BASE_URL` at it and have it expose what
+the two tools call:
+
+**1. Log query** (`GET {TARGET_BASE_URL}/internal/logs`) with optional query params
+`traceId`, `level`, `contains`, `limit`, returning a JSON array of entries:
+
+```json
+[{ "eventTime": "...", "level": "WARN", "logger": "...", "message": "...", "traceId": "..." }]
+```
+
+**2. Metrics** in Spring Boot Actuator format: `GET {TARGET_BASE_URL}/actuator/metrics` (the
+list) and `/actuator/metrics/{name}` (one metric).
+
+**Different API shape?** The tools are pluggable: implement `InvestigationTool` (or adapt
+`TargetSystemClient`) to call your own logging / metrics / tracing backend. The agent loop
+doesn't care where the evidence comes from.
+
+Point the agent at your app:
+
+```bash
+TARGET_BASE_URL=http://your-app:port ./mvnw spring-boot:run
+```
+
 ## API
 
 | Method | Path | Purpose |
