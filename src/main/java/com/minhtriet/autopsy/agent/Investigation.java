@@ -28,6 +28,12 @@ public class Investigation {
 
     private int steps;
 
+    private long inputTokens;
+
+    private long outputTokens;
+
+    private double estCostUsd;
+
     private Instant createdAt;
 
 

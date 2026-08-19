@@ -33,3 +33,7 @@ build/
 .vscode/
 
 .env
+
+# Personal notes (interview prep, not for the public repo)
+DECISIONS.md
+FAILURES.md

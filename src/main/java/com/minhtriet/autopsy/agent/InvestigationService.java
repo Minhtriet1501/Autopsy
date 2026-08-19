@@ -1,21 +1,22 @@
 package com.minhtriet.autopsy.agent;
 
 import com.anthropic.client.AnthropicClient;
-import com.anthropic.core.JsonValue;
 import com.anthropic.models.messages.*;
 import com.minhtriet.autopsy.tool.InvestigationTool;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class InvestigationService {
 
+    //claude-sonnet-5 intro pricing đến 31/08/2026 ($3/$15 sau đó)
+    private final double INPUT_PRICE_PER_1M = 2.00;
+    private final double OUTPUT_PRICE_PER_1M = 10.00;
+
     private final int MAX_STEPS = 8; //cost cap no infinity loop
+    private final long MAX_TOKENS = 50_000;
 
     private final InvestigationRepository investigationRepository;
 
@@ -35,6 +36,9 @@ public class InvestigationService {
 
 
     public Investigation investigate(String alert) {
+        long totalInput = 0, totalOutput = 0;
+        Set<String> seenCalls = new HashSet<>(); //store what tools were used
+
         Investigation inv = new Investigation();
         inv.setAlert(alert);
         inv.setCreatedAt(java.time.Instant.now());
@@ -52,6 +56,11 @@ public class InvestigationService {
 
 
         for(int step = 1; step <= MAX_STEPS; step++) {
+
+            if(totalInput + totalOutput >= MAX_TOKENS) {
+                return finish(inv, "INCONCLUSIVE", "INCONCLUSIVE: token budget (" + MAX_TOKENS + ") exhausted after " + (step - 1) + " steps.", step - 1, totalInput, totalOutput);
+            }
+
             MessageCreateParams.Builder builder = MessageCreateParams.builder()
                     .model("claude-sonnet-5")
                     .maxTokens(2048L)
@@ -63,6 +72,11 @@ public class InvestigationService {
 
             Message response = client.messages().create(builder.build());
 
+            //get token that were used
+            totalInput += response.usage().inputTokens();
+            totalOutput += response.usage().outputTokens();
+
+
             messages.add(response.toParam()); //record claude's turn in the history
 
             String reasoning = extractText(response);
@@ -72,10 +86,7 @@ public class InvestigationService {
                     .orElse(false);
 
             if(!wantsTool) { //Claude has concluded (no more tool)
-                inv.setConclusion(reasoning);
-                inv.setStatus("CONCLUDED");
-                inv.setSteps(step);
-                return investigationRepository.save(inv);
+                return finish(inv, "CONCLUDED", reasoning, step, totalInput, totalOutput);
             }
 
             List<ContentBlockParam> toolResults = new ArrayList<>();
@@ -84,7 +95,20 @@ public class InvestigationService {
                     ToolUseBlock tu = block.asToolUse();
                     System.out.println("[agent] step: " + step + ": Claude called " + tu.name() + " " + tu._input());
 
-                    String result = executeTool(tu);
+                    String signature = tu.name() + "|"  + tu._input();
+
+                    String result;
+
+                    if(!seenCalls.add(signature)) {
+                        result = "Duplicate call: you already ran" + tu.name()
+                                + " with these exact arguments; the result is unchanged. "
+                                + "Try a different tool or arguments, or conclude with the evidence you already have.";
+                    }
+                    else {
+                        result = executeTool(tu);
+                    }
+
+
 
                     EvidenceStep es = new EvidenceStep();
                     es.setStepNo(step);
@@ -113,7 +137,9 @@ public class InvestigationService {
         inv.setConclusion("INCONCLUSIVE: reach the " + MAX_STEPS + "-step limit without a conclusion.");
         inv.setStatus("INCONCLUSIVE");
         inv.setSteps(MAX_STEPS);
-        return investigationRepository.save(inv);
+        return finish(inv, "INCONCLUSIVE",
+                "INCONCLUSIVE: reach the " + MAX_STEPS + "-step limit without a conclusion.",
+                MAX_STEPS, totalInput, totalOutput);
     }
 
 
@@ -145,6 +171,16 @@ public class InvestigationService {
 
     }
 
+    private Investigation finish(Investigation inv, String status, String conclusion,
+                                 int steps, long in, long out) {
+        inv.setConclusion(conclusion);
+        inv.setStatus(status);
+        inv.setSteps(steps);
+        inv.setInputTokens(in);
+        inv.setOutputTokens(out);
+        inv.setEstCostUsd(in / 1_000_000.0 * INPUT_PRICE_PER_1M + out / 1_000_000.0 * OUTPUT_PRICE_PER_1M);
 
+        return investigationRepository.save(inv);
+    }
 
 }

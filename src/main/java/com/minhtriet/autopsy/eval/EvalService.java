@@ -14,9 +14,9 @@ public class EvalService {
 
     public record Scenario(String name, String faultType, String alert, List<String> expected) {};
 
-    public record Result(String scenario, boolean correct, int steps, String conclusion) {};
+    public record Result(String scenario, boolean correct, int steps,long token, double costUsd, String conclusion) {};
 
-    public record Report(long passed, int total, double accuracy, double avgSteps, List<Result> results) {};
+    public record Report(long passed, int total, double accuracy, double avgSteps,double avgTokens, double avgCostUsd, List<Result> results) {};
 
     private final FaultControlClient faultControl;
     private final InvestigationService investigationService;
@@ -39,14 +39,17 @@ public class EvalService {
             String conclusion = inv.getConclusion() == null ? "" : inv.getConclusion();
 
             boolean correct = s.expected().stream().anyMatch(y -> conclusion.toLowerCase().contains(y.toLowerCase()));
+            long tokens = inv.getInputTokens() + inv.getOutputTokens();
 
-            results.add(new Result(s.name(), correct, inv.getSteps(), conclusion.length() > 200 ? conclusion.substring(0, 200) + "..." : conclusion));
+            results.add(new Result(s.name(), correct, inv.getSteps(), tokens, inv.getEstCostUsd(), conclusion.length() > 200 ? conclusion.substring(0, 200) + "..." : conclusion));
         }
         faultControl.disableAll();
 
         long passed = results.stream().filter(Result::correct).count();
         double avgSteps = results.stream().mapToInt(Result::steps).average().orElse(0);
-        return new Report(passed, results.size(), (double) passed / results.size(), avgSteps, results);
+        double avgTokens = results.stream().mapToLong(Result::token).average().orElse(0);
+        double avgCost = results.stream().mapToDouble(Result::costUsd).average().orElse(0);
+        return new Report(passed, results.size(), (double) passed / results.size(), avgSteps, avgTokens, avgCost, results);
     }
 
     private List<Scenario> scenarios() {
