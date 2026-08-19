@@ -123,7 +123,7 @@ curl -X POST localhost:8081/internal/eval/run
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/internal/agent/investigate` | Submit an alert → returns `{jobId}` (202) |
+| `POST` | `/internal/agent/investigate` | Submit an alert -> returns `{jobId}` (202) |
 | `GET`  | `/internal/agent/jobs/{id}` | Job status (QUEUED / RUNNING / DONE / FAILED) |
 | `GET`  | `/internal/agent/investigations/{id}` | Full evidence trail |
 | `POST` | `/internal/eval/run` | Run the eval suite → accuracy / steps / cost |
